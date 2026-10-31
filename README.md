@@ -19,7 +19,11 @@
 
 ## Number Limit
 
-The representation limit of Qnum is: 10 ^^ (10 ^ 308) or E1#1e308
+The representation limit of Qnum is: 
+
+10 ↑↑ (<sup>308</sup>)
+
+which is a power tower of 10s with 10<sup>308</sup> levels.
 
 ## Installation
 
