@@ -1,8 +1,9 @@
 # Qnum
 
-**A large number library for Lua that handles numbers far beyond the standard `1e308` limit.**
+### Current version: 1.2
 
-**Current version:** 1.2
+**A large number library for Lua that handles numbers far beyond the standard `1e308` limit.**</br>
+**This was inspired by [break_infinity.js](https://github.com/Patashu/break_infinity.js)**
 
 ---
 
@@ -10,9 +11,7 @@
 
 - Uses Super-Logarithm (`slog`) representation internally.
 - Supports scientific notation and extended exponent notation.
-- Basic arithmetic operations.
-- Exponentiation and tetration.
-- Factorial, gamma, square root, and root functions.
+- Basic arithmetic operations, Factorial, gamma, square root, exponentiation and tetration.
 - Number comparison.
 - Conversion to strings and standard Lua numbers.
 - Positive and negative infinity support.
