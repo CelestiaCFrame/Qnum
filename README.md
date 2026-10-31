@@ -21,7 +21,7 @@
 
 The representation limit of Qnum is: 
 
-10 ↑↑ (<sup>308</sup>)
+10 ↑↑ 10<sup>308</sup>
 
 which is a power tower of 10s with 10<sup>308</sup> levels.
 
