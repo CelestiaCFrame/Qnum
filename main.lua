@@ -8,14 +8,10 @@ A large number library for handling huge numbers beyond 1e308.
 This library limit is `10 ^^ (10 ^ 308)` or `E1#1e308`
 
 Usage example:
-```lua
-local Qnum = require("Qnum")
-
-local a = Qnum.new("4")
-local b = Qnum.new("-1")
-
-print(a ^ b) -- Outputs: 0.25
-```
+    local Qnum = require("Qnum")
+    local a = Qnum.new("4")
+    local b = Qnum.new("-1")
+    print(a ^ b) -- Outputs: 0.25
 
 Qnum functions: new, fromSuperLogarithm, ToString, add, sub, mul, div, pow, tetr, exp, cmp, min, max, fact, gamma, sqrt, isFinite, root, abs, ToNumber
 ]]
