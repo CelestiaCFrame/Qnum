@@ -2,37 +2,58 @@
 Qnum
 ====
 Current version: 1.2
---------------------
+--------------------------------------------------------------
 A large number library for handling huge numbers beyond 1e308.
 
 This library limit is `10 ^^ (10 ^ 308)` or `E1#1e308`
 
-Usage examples:
+Usage example:
 ```lua
-    local Qnum = require("Qnum")
-    local number = Qnum.new(10)
-    print(number)
+local Qnum = require("Qnum")
+
+local a = Qnum.new("4")
+local b = Qnum.new("-1")
+
+print(a ^ b) -- Outputs: 0.25
 ```
 
-Qnum functions: `new, fromSuperLogarithm, ToString, add, sub, mul, div, pow, tetr, exp, cmp, min, max, fact, gamma, sqrt, isFinite, root, abs, ToNumber`
+Qnum functions: new, fromSuperLogarithm, ToString, add, sub, mul, div, pow, tetr, exp, cmp, min, max, fact, gamma, sqrt, isFinite, root, abs, ToNumber
 ]]
 
 local Qnum = {}
 Qnum.__index = Qnum
 
 function Qnum.new(n)
-    assert(type(n) == "number" or type(n) == "string", string.format("Invalid argument #1 to 'new' (number or string expected, got %s)", type(n)))
     if n == nil then
         n = 0
     end
+    assert(type(n) == "number" or type(n) == "string", string.format("Invalid argument #1 to 'new' (number or string expected, got %s)", type(n)))
+
+    local sign = 1
+    if type(n) == "number" then
+        if n < 0 then
+            sign = -1
+            n = -n
+        end
+    elseif type(n) == "string" then
+        n = n:gsub("^%s+", "")
+        if n:sub(1, 1) == "-" then
+            sign = -1
+            n = n:sub(2)
+        elseif n:sub(1, 1) == "+" then
+            n = n:sub(2)
+        end
+    end
 
     local self = setmetatable({}, Qnum)
+    self.sign = sign
 
-    if n == math.huge then
+    if n == math.huge or n == "inf" or n == "Infinity" then
         self.slog = math.huge
         return self
     elseif n == -math.huge then
-        self.slog = -math.huge
+        self.slog = math.huge
+        self.sign = -1
         return self
     end
 
@@ -47,17 +68,11 @@ function Qnum.new(n)
             local base = tonumber(base_str)
             local exponent = tonumber(exp_str)
             assert(base and exponent, "Invalid format for big number")
-
-            --[[
-            if exponent >= 10 then
-                BigNumber = true
-            end
-            ]]
-
             BigNumber = true
             n = exponent + math.log(base, 10)
         else
             n = tonumber(n)
+            assert(n, "Invalid number format")
         end
     end
 
@@ -85,12 +100,14 @@ end
 ---@generic Qnum: table
 ---@return Qnum
 ---@param n number
----Creates a new Qnum type from SuperLogarithm.
-function Qnum.fromSuperLogarithm(n)
+---@param sign number?
+---Creates a new Qnum type from SuperLogarithm and sign.
+function Qnum.fromSuperLogarithm(n, sign)
     assert(type(n) == "number", string.format("Invalid argument #1 to 'fromSuperLogarithm' (number expected, got %s)", type(n)))
     
     local self = setmetatable({}, Qnum)
     self.slog = n
+    self.sign = sign or 1
 
     return self
 end
@@ -98,8 +115,9 @@ end
 ---@return string | number
 ---Returns the string format for the Qnum.
 function Qnum:ToString()
-    if self.slog == math.huge then return "Infinity" end
-    if self.slog == -math.huge then return "-Infinity" end
+    if self.slog == math.huge then 
+        return (self.sign == -1) and "-Infinity" or "Infinity" 
+    end
     local ret
     if self.slog < 0 then
         ret = math.floor((self.slog + 1) * 1000) / 1000
@@ -170,22 +188,28 @@ function Qnum:ToString()
         ret = "E" .. ret .. "#" .. math.floor(self.slog)
     end
 
+    if self.sign == -1 and ret ~= "0" and ret ~= "000" then
+        ret = "-" .. ret
+    end
+
     return ret
 end
 
-function Qnum.add(x, y)
-    if type(x) == "number" then x = Qnum.new(x) end
-    if type(y) == "number" then y = Qnum.new(y) end
-    if x.slog == math.huge then return x end
-    if y.slog == math.huge then return y end
+local function compare_mag(x, y)
+    if x.slog == y.slog then return 0 end
+    return x.slog > y.slog and 1 or -1
+end
+
+local function mag_add(x, y)
+    if x.slog == math.huge then return x.slog end
+    if y.slog == math.huge then return y.slog end
 
     local ret
     if y.slog > x.slog then
-        ret = Qnum.add(y, x).slog
+        ret = mag_add(y, x)
     else
         local A = math.floor(x.slog)
         local B = math.floor(y.slog)
-        local difference = A - B
 
         if B == -1 then
             if A == -1 then
@@ -248,31 +272,26 @@ function Qnum.add(x, y)
         end
     end
 
-    return Qnum.fromSuperLogarithm(ret)
+    return ret
 end
 
-function Qnum.sub(x, y)
-    if type(x) == "number" then x = Qnum.new(x) end
-    if type(y) == "number" then y = Qnum.new(y) end
-    if x.slog == math.huge then return x end
-    if y.slog == math.huge then return y end
+local function mag_sub(x, y)
+    if x.slog == math.huge then return x.slog end
+    if y.slog == math.huge then return -math.huge end
 
     local A = math.floor(x.slog)
-    local B = math.floor(y.slog)
-    local guesser = 0
-    local adder = 0
+    local guesser = -1
+    local adder = 4
     local ret
 
     if A > 2.5 then
         ret = x.slog
     else
-        guesser = -1
-        adder = 4
         for i = 1, 30 do
             adder = adder / 2
             guesser = guesser + adder
-            ret = Qnum.add(y, Qnum.fromSuperLogarithm(guesser)).slog
-            if ret > x.slog then
+            local sum_slog = mag_add(y, Qnum.fromSuperLogarithm(guesser))
+            if sum_slog > x.slog then
                 guesser = guesser - adder
             end
         end
@@ -284,23 +303,59 @@ function Qnum.sub(x, y)
         ret = guesser
     end
 
-    return Qnum.fromSuperLogarithm(ret)
+    return ret
+end
+
+function Qnum.add(x, y)
+    if type(x) == "number" then x = Qnum.new(x) end
+    if y == nil then return x end
+    if type(y) == "number" then y = Qnum.new(y) end
+    if x.slog == math.huge and y.slog == math.huge then
+        if x.sign == y.sign then return x else return Qnum.new(0) end
+    end
+    if x.slog == math.huge then return x end
+    if y.slog == math.huge then return y end
+
+    if x.sign == y.sign then
+        local slog_res = mag_add(x, y)
+        return Qnum.fromSuperLogarithm(slog_res, x.sign)
+    else
+        local cmp = compare_mag(x, y)
+        if cmp >= 0 then
+            local slog_res = mag_sub(x, y)
+            return Qnum.fromSuperLogarithm(slog_res, x.sign)
+        else
+            local slog_res = mag_sub(y, x)
+            return Qnum.fromSuperLogarithm(slog_res, y.sign)
+        end
+    end
+end
+
+function Qnum.sub(x, y)
+    if type(x) == "number" then x = Qnum.new(x) end
+    if y == nil then return x end
+    if type(y) == "number" then y = Qnum.new(y) end
+
+    local neg_y = Qnum.fromSuperLogarithm(y.slog, -y.sign)
+    return Qnum.add(x, neg_y)
 end
 
 function Qnum.mul(x, y)
     if type(x) == "number" then x = Qnum.new(x) end
+    if y == nil then return x end
     if type(y) == "number" then y = Qnum.new(y) end
     if x.slog == math.huge then return x end
     if y.slog == math.huge then return y end
     local ret
     local re
+    local result_sign = x.sign * y.sign
 
     if y.slog > x.slog then
         ret = Qnum.mul(y, x).slog
     elseif math.floor(x.slog) > 3.5 then
         ret = x.slog
     elseif y.slog > 0 then
-        ret = Qnum.add(Qnum.fromSuperLogarithm(x.slog - 1), Qnum.fromSuperLogarithm(y.slog - 1)).slog
+        ret = mag_add(Qnum.fromSuperLogarithm(x.slog - 1), Qnum.fromSuperLogarithm(y.slog - 1))
         ret = ret + 1
     elseif x.slog > 0 then
         re = math.log(1 / (1 + y.slog), 10)
@@ -313,11 +368,11 @@ function Qnum.mul(x, y)
             re = 2 + math.log(re - 1, 10)
         end
 
-        ret = Qnum.sub(Qnum.fromSuperLogarithm(x.slog - 1), Qnum.fromSuperLogarithm(re - 1)).slog
+        ret = mag_sub(Qnum.fromSuperLogarithm(x.slog - 1), Qnum.fromSuperLogarithm(re - 1))
         ret = ret + 1
 
         if re - 1 > x.slog - 1 then
-            ret = Qnum.sub(Qnum.fromSuperLogarithm(re - 1), Qnum.fromSuperLogarithm(x.slog - 1)).slog
+            ret = mag_sub(Qnum.fromSuperLogarithm(re - 1), Qnum.fromSuperLogarithm(x.slog - 1))
             ret = ret + 1
             if ret < 1 then
                 ret = 1 / (10 ^ ret) - 1
@@ -331,23 +386,26 @@ function Qnum.mul(x, y)
         ret = (x.slog + 1) * (y.slog + 1) - 1
     end
 
-    return Qnum.fromSuperLogarithm(ret)
+    return Qnum.fromSuperLogarithm(ret, result_sign)
 end
 
 function Qnum.div(x, y)
     if type(x) == "number" then x = Qnum.new(x) end
+    if y == nil then return x end
     if type(y) == "number" then y = Qnum.new(y) end
     if x.slog == math.huge then return x end
     if y.slog == math.huge then return y end
     local ret
     local re
+    local result_sign = x.sign * y.sign
+
     if math.floor(x.slog) > 3.5 then
         ret = x.slog
     elseif y.slog > 0 then
-        ret = Qnum.sub(Qnum.fromSuperLogarithm(x.slog - 1), Qnum.fromSuperLogarithm(y.slog - 1)).slog
+        ret = mag_sub(Qnum.fromSuperLogarithm(x.slog - 1), Qnum.fromSuperLogarithm(y.slog - 1))
         ret = ret + 1
         if y.slog > x.slog then
-            ret = Qnum.sub(Qnum.fromSuperLogarithm(y.slog - 1), Qnum.fromSuperLogarithm(x.slog - 1)).slog
+            ret = mag_sub(Qnum.fromSuperLogarithm(y.slog - 1), Qnum.fromSuperLogarithm(x.slog - 1))
             ret = ret + 1
             if ret < 1 then
                 ret = 1 / (10 ^ ret) - 1
@@ -367,7 +425,7 @@ function Qnum.div(x, y)
             re = 2 + math.log(re - 1, 10)
         end
 
-        ret = Qnum.add(Qnum.fromSuperLogarithm(x.slog - 1), Qnum.fromSuperLogarithm(re - 1)).slog
+        ret = mag_add(Qnum.fromSuperLogarithm(x.slog - 1), Qnum.fromSuperLogarithm(re - 1))
         ret = ret + 1
     else
         re = (x.slog + 1) / (y.slog + 1) - 1
@@ -386,21 +444,57 @@ function Qnum.div(x, y)
         ret = re
     end
 
-    return Qnum.fromSuperLogarithm(ret)
+    return Qnum.fromSuperLogarithm(ret, result_sign)
 end
 
 function Qnum.pow(x, y)
     if type(x) == "number" then x = Qnum.new(x) end
+    if y == nil then return x end
     if type(y) == "number" then y = Qnum.new(y) end
     if x.slog == math.huge then return x end
     if y.slog == math.huge then return y end
-    local ret = Qnum.mul(Qnum.fromSuperLogarithm(x.slog - 1), y)
+
+    local result_sign = 1
+    if x.sign == -1 then
+        local is_integer = false
+        local is_odd = false
+        local success, y_num = pcall(function() return y:ToNumber() end)
+        if success and y_num then
+            if y_num % 1 == 0 then
+                is_integer = true
+                if y_num % 2 ~= 0 then
+                    is_odd = true
+                end
+            end
+        else
+            is_integer = true
+            is_odd = false
+        end
+
+        if is_integer then
+            result_sign = is_odd and -1 or 1
+        else
+            error("Domain error: negative base with non-integer exponent")
+        end
+    end
+
+    local x_mag = Qnum.fromSuperLogarithm(x.slog, 1)
+    local y_mag = Qnum.fromSuperLogarithm(y.slog, 1)
+
+    local ret = Qnum.mul(Qnum.fromSuperLogarithm(x_mag.slog - 1), y_mag)
     ret.slog = ret.slog + 1
+    ret.sign = result_sign
+
+    if y.sign == -1 then
+        ret = Qnum.div(Qnum.new(1), ret)
+    end
+
     return ret
 end
 
 function Qnum.tetr(x, y)
     if type(x) == "number" then x = Qnum.new(x) end
+    if y == nil then return x end
     assert(not (getmetatable(y) == Qnum), "Unsupported format: y cannot be type of Qnum")
     if x.slog == math.huge then return x end
     if y == math.huge then return y end
@@ -428,7 +522,7 @@ function Qnum.tetr(x, y)
         end
     end
 
-    return Qnum.fromSuperLogarithm(ret)
+    return Qnum.fromSuperLogarithm(ret, x.sign)
 end
 
 function Qnum.exp(x)
@@ -437,8 +531,7 @@ end
 
 function Qnum.__unm(x)
     if type(x) == "number" then x = Qnum.new(x) end
-    if x.slog == math.huge then return Qnum.new(-math.huge) end
-    return Qnum.new(-x:ToNumber())
+    return Qnum.fromSuperLogarithm(x.slog, -x.sign)
 end
 
 function Qnum.__add(x, y)
@@ -465,46 +558,61 @@ function Qnum.__tostring(x)
     return x:ToString()
 end
 
-function Qnum.__eq(x, y)
+local function compare(x, y)
     if type(x) == "number" then x = Qnum.new(x) end
+    if y == nil then y = 0 end
     if type(y) == "number" then y = Qnum.new(y) end
-    return x.slog == y.slog
+
+    if x.slog == -math.huge and y.slog == -math.huge then return 0 end
+
+    if x.sign ~= y.sign then
+        return x.sign > y.sign and 1 or -1
+    end
+
+    if x.slog == y.slog then return 0 end
+
+    if x.sign == 1 then
+        return x.slog > y.slog and 1 or -1
+    else
+        return x.slog < y.slog and 1 or -1
+    end
+end
+
+function Qnum.__eq(x, y)
+    return compare(x, y) == 0
 end
 
 function Qnum.__lt(x, y)
-    if type(x) == "number" then x = Qnum.new(x) end
-    if type(y) == "number" then y = Qnum.new(y) end
-    return x.slog < y.slog
+    return compare(x, y) < 0
 end
 
 function Qnum.__le(x, y)
-    if type(x) == "number" then x = Qnum.new(x) end
-    if type(y) == "number" then y = Qnum.new(y) end
-    return x.slog <= y.slog
+    return compare(x, y) <= 0
 end
 
 function Qnum.cmp(x, y)
-    if type(x) == "number" then x = Qnum.new(x) end
-    if type(y) == "number" then y = Qnum.new(y) end
-    if x > y then
+    local res = compare(x, y)
+    if res > 0 then
         return ">"
-    elseif x < y then
+    elseif res < 0 then
         return "<"
-    elseif x == y then
+    else
         return "=="
     end
 end
 
 function Qnum.min(x, y)
     if type(x) == "number" then x = Qnum.new(x) end
+    if y == nil then return x end
     if type(y) == "number" then y = Qnum.new(y) end
-    return math.min(x.slog, y.slog)
+    if compare(x, y) <= 0 then return x else return y end
 end
 
 function Qnum.max(x, y)
     if type(x) == "number" then x = Qnum.new(x) end
+    if y == nil then return x end
     if type(y) == "number" then y = Qnum.new(y) end
-    return math.max(x.slog, y.slog)
+    if compare(x, y) >= 0 then return x else return y end
 end
 
 function Qnum.fact(x)
@@ -532,6 +640,7 @@ end
 
 function Qnum.root(x, y)
     if type(x) == "number" then x = Qnum.new(x) end
+    if y == nil then return x end
     if type(y) == "number" then y = Qnum.new(y) end
     if x.slog == math.huge then return x end
     if y.slog == math.huge then return y end
@@ -540,27 +649,23 @@ end
 
 function Qnum.abs(x)
     if type(x) == "number" then x = Qnum.new(x) end
-    if x.slog == math.huge then return x end
-    if x.slog == -math.huge then return -x end
-
-    if x.slog >= 0 then
-        return x
-    else
-        return Qnum.new(-x.slog - 1)
-    end
+    if x.slog == math.huge then return Qnum.fromSuperLogarithm(math.abs(x.slog), 1) end
+    return Qnum.fromSuperLogarithm(x.slog, 1)
 end
 
 function Qnum:ToNumber()
     if self.slog > Qnum.new(1e308).slog then
         error("Unsupported number: number is too large")
     else
-        return tonumber(self:ToString())
+        local val = tonumber(self:ToString())
+        assert(val, "Failed to convert Qnum to standard number")
+        return val
     end
 end
 
 Qnum.pi = Qnum.new(math.pi)
 Qnum.e = Qnum.new(math.exp(1))
-Qnum._VERSION = "Qnum 1.2"
+Qnum._VERSION = "Qnum 1.10"
 
 local function Protect(table)
     local proxy = {}
@@ -574,9 +679,4 @@ local function Protect(table)
     return proxy
 end
 
-for i = 1, 10 do
-    print(Qnum.new("1e" .. tostring(i)))
-end
-
-Qnum = Protect(Qnum)
-return Qnum
+return Protect(Qnum)
